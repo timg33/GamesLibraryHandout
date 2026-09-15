@@ -33,24 +33,78 @@ jobs:
           path: frontend.tar
           retention-days: 1
 
-  tests:
+  # ---------------------------------------------------------------------------
+  # Variante A: alle Tests in einem Job (Referenz fuer den Vergleich)
+  # ---------------------------------------------------------------------------
+  tests-baseline:
     runs-on: ubuntu-22.04
-    needs: build   # Test-Job wartet, bis der Build-Job erfolgreich ist
+    needs: build
     steps:
-      # Kein Checkout: alles Noetige kommt als Artefakt aus dem Build-Job
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: frontend-workspace
-
       - name: Unpack workspace
         run: tar -xf frontend.tar
-
       - name: Run tests
         working-directory: frontend
         run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Variante B: Sharding - die Testdateien werden auf 2 parallele Jobs verteilt.
+  # Jest 27 (Create React App) kennt --shard noch nicht (erst ab Jest 28), darum
+  # wird die Aufteilung von Hand gemacht: Dateien sortieren, jede n-te nehmen.
+  # ---------------------------------------------------------------------------
+  tests-sharded:
+    runs-on: ubuntu-22.04
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      SHARDS: 2
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-workspace
+      - name: Unpack workspace
+        run: tar -xf frontend.tar
+      - name: Run tests (shard ${{ matrix.shard }}/2)
+        working-directory: frontend
+        run: |
+          FILES=$(find src -name '*.test.tsx' | sort | awk -v n="$SHARDS" -v s="${{ matrix.shard }}" 'NR % n == s % n')
+          echo "Shard ${{ matrix.shard }}/$SHARDS testet:"
+          echo "$FILES"
+          npm test -- $FILES
+
+  # ---------------------------------------------------------------------------
+  # Variante C: mehr CPU-Kerne - Jest nutzt standardmaessig Kerne-1 Worker,
+  # hier werden alle 4 Kerne des Runners fuer Tests freigegeben.
+  # ---------------------------------------------------------------------------
+  tests-more-cores:
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-workspace
+      - name: Unpack workspace
+        run: tar -xf frontend.tar
+      - name: Run tests (maxWorkers=4)
+        working-directory: frontend
+        run: npm test -- --maxWorkers=4
