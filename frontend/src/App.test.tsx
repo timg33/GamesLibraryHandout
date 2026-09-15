@@ -22,10 +22,10 @@ jest.mock('./api/gameApi', () => ({
   deleteGame: () => Promise.resolve(undefined),
 }));
 
-test('rendert den Titel der Anwendung', async () => {
+test('rendert die falsche Überschrift', async () => {
   render(<App />);
 
-  expect(await screen.findByText('Games Library')).toBeInTheDocument();
+  expect(await screen.findByText('Wrong Heading')).toBeInTheDocument();
   expect(screen.getByText('Your Personal Gaming Universe')).toBeInTheDocument();
 });
 
